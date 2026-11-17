@@ -1,0 +1,22 @@
+{
+  "api": 1,
+  "id": "mos.shrink",
+  "name": "mos_收缩",
+  "category": "MOS",
+  "version": "1.3.7",
+  "author": "MOSSLS",
+  "description": "锚点收缩形变：画面向可移动锚点收缩，边缘固定不撕裂（全部固定 / 不固定=AE 鱼眼），收缩强度随半径沿可编辑的贝塞尔曲线插值。",
+  "params": [
+    {"id": "amount", "name": "收缩量 %", "type": "slider", "default": 40, "min": -100, "max": 100, "decimals": 1},
+    {"id": "anchor", "name": "锚点", "type": "point", "default": [0.5, 0.5]},
+    {"id": "radius", "name": "半径 %", "type": "slider", "default": 100, "min": 1, "max": 400, "decimals": 1},
+    {"id": "curve_x1", "name": "曲线 X1", "type": "slider", "default": 0, "min": 0, "max": 1, "decimals": 3},
+    {"id": "curve_y1", "name": "曲线 Y1", "type": "slider", "default": 0, "min": 0, "max": 1, "decimals": 3},
+    {"id": "curve_x2", "name": "曲线 X2", "type": "slider", "default": 1, "min": 0, "max": 1, "decimals": 3},
+    {"id": "curve_y2", "name": "曲线 Y2", "type": "slider", "default": 1, "min": 0, "max": 1, "decimals": 3},
+    {"id": "edge_fix", "name": "边缘固定", "type": "popup", "options": ["固定（四边+四角）", "圆形·AE 白点（钉四角，边可弯）"], "default": 0},
+    {"id": "sampling", "name": "采样", "type": "popup", "options": ["双线性", "双三次", "最近邻"], "default": 0},
+    {"id": "edge_mode", "name": "越界", "type": "popup", "options": ["拉伸边缘", "重复", "镜像", "透明"], "default": 0},
+    {"id": "mix", "name": "混合 %", "type": "slider", "default": 100, "min": 0, "max": 100, "decimals": 1}
+  ]
+}

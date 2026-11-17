@@ -1,0 +1,5 @@
+node_modules/
+build/
+*.rgba
+*.log
+40

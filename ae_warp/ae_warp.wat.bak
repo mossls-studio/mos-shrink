@@ -1,0 +1,277 @@
+(module
+  ;; ============================================================
+  ;;  mos.ae.warp  /  变形·白点
+  ;;  After Effects「扭曲 ▸ 变形」中 变形样式 = 白点 (Fisheye) 的复刻
+  ;;
+  ;;  采样倍率：  A(u,v) = 1 + k * (1-u²)² * (1-v²)²
+  ;;              u = (x - cx)/cx,  v = (y - cy)/cy   （中心 0、边框 ±1）
+  ;;              k = -(弯曲/100) * 0.90
+  ;;  采样坐标：  src = c + (p - c) * A
+  ;;  (1-u²)(1-v²) 在四条边与四个角上恒为 0 → A = 1 → 边界位移严格为 0；
+  ;;  整个场是多项式，处处光滑，不会有折痕。
+  ;; ============================================================
+  (memory (export "memory") 4)
+  (data (i32.const 1024) "__MANIFEST_BYTES__")
+
+  (global $ARENA (mut i32) (i32.const 32768))
+  (global $SRC (mut i32) (i32.const 0))
+  (global $W (mut i32) (i32.const 0))
+  (global $H (mut i32) (i32.const 0))
+  (global $K (mut f64) (f64.const 0))
+  (global $SAMP (mut i32) (i32.const 0))
+  (global $CX (mut f64) (f64.const 0))
+  (global $CY (mut f64) (f64.const 0))
+  (global $oR (mut f32) (f32.const 0))
+  (global $oG (mut f32) (f32.const 0))
+  (global $oB (mut f32) (f32.const 0))
+  (global $oA (mut f32) (f32.const 0))
+  (global $accR (mut f32) (f32.const 0))
+  (global $accG (mut f32) (f32.const 0))
+  (global $accB (mut f32) (f32.const 0))
+  (global $accA (mut f32) (f32.const 0))
+
+  (func $imin (param $a i32) (param $b i32) (result i32)
+    (if (result i32) (i32.lt_s (local.get $a) (local.get $b))
+      (then (local.get $a)) (else (local.get $b))))
+
+  (func $imax (param $a i32) (param $b i32) (result i32)
+    (if (result i32) (i32.gt_s (local.get $a) (local.get $b))
+      (then (local.get $a)) (else (local.get $b))))
+
+  ;; 读源图 (ix,iy) 的通道 c
+  (func $tex (param $ix i32) (param $iy i32) (param $c i32) (result f32)
+    (f32.load (i32.add
+      (i32.add (global.get $SRC)
+        (i32.mul (i32.add (i32.mul (local.get $iy) (global.get $W)) (local.get $ix)) (i32.const 16)))
+      (i32.mul (local.get $c) (i32.const 4)))))
+
+  ;; 双线性采样 → $oR..$oA
+  (func $sampleBilinear (param $fx f64) (param $fy f64)
+    (local $x0 i32) (local $y0 i32) (local $x1 i32) (local $y1 i32)
+    (local $tx f64) (local $ty f64)
+    (local $w00 f64) (local $w10 f64) (local $w01 f64) (local $w11 f64)
+    (local $r f64)
+    (local $c i32)
+
+    (local.set $fx (f64.max (f64.const 0)
+      (f64.min (f64.convert_i32_s (i32.sub (global.get $W) (i32.const 1))) (local.get $fx))))
+    (local.set $fy (f64.max (f64.const 0)
+      (f64.min (f64.convert_i32_s (i32.sub (global.get $H) (i32.const 1))) (local.get $fy))))
+
+    (local.set $x0 (i32.trunc_f64_s (local.get $fx)))
+    (local.set $y0 (i32.trunc_f64_s (local.get $fy)))
+    (local.set $x1 (call $imin (i32.add (local.get $x0) (i32.const 1)) (i32.sub (global.get $W) (i32.const 1))))
+    (local.set $y1 (call $imin (i32.add (local.get $y0) (i32.const 1)) (i32.sub (global.get $H) (i32.const 1))))
+    (local.set $tx (f64.sub (local.get $fx) (f64.convert_i32_s (local.get $x0))))
+    (local.set $ty (f64.sub (local.get $fy) (f64.convert_i32_s (local.get $y0))))
+    (local.set $w00 (f64.mul (f64.sub (f64.const 1) (local.get $tx)) (f64.sub (f64.const 1) (local.get $ty))))
+    (local.set $w10 (f64.mul (local.get $tx) (f64.sub (f64.const 1) (local.get $ty))))
+    (local.set $w01 (f64.mul (f64.sub (f64.const 1) (local.get $tx)) (local.get $ty)))
+    (local.set $w11 (f64.mul (local.get $tx) (local.get $ty)))
+
+    (local.set $c (i32.const 0))
+    (block $done
+      (loop $ch
+        (br_if $done (i32.ge_s (local.get $c) (i32.const 4)))
+        (local.set $r (f64.add
+          (f64.add
+            (f64.mul (local.get $w00) (f64.promote_f32 (call $tex (local.get $x0) (local.get $y0) (local.get $c))))
+            (f64.mul (local.get $w10) (f64.promote_f32 (call $tex (local.get $x1) (local.get $y0) (local.get $c)))))
+          (f64.add
+            (f64.mul (local.get $w01) (f64.promote_f32 (call $tex (local.get $x0) (local.get $y1) (local.get $c))))
+            (f64.mul (local.get $w11) (f64.promote_f32 (call $tex (local.get $x1) (local.get $y1) (local.get $c)))))))
+        (if (i32.eq (local.get $c) (i32.const 0)) (then (global.set $oR (f32.demote_f64 (local.get $r)))))
+        (if (i32.eq (local.get $c) (i32.const 1)) (then (global.set $oG (f32.demote_f64 (local.get $r)))))
+        (if (i32.eq (local.get $c) (i32.const 2)) (then (global.set $oB (f32.demote_f64 (local.get $r)))))
+        (if (i32.eq (local.get $c) (i32.const 3)) (then (global.set $oA (f32.demote_f64 (local.get $r)))))
+        (local.set $c (i32.add (local.get $c) (i32.const 1)))
+        (br $ch))))
+
+  ;; 最近邻采样 → $oR..$oA
+  (func $sampleNearest (param $fx f64) (param $fy f64)
+    (local $x i32) (local $y i32)
+    (local.set $x (i32.trunc_f64_s (f64.add (local.get $fx) (f64.const 0.5))))
+    (local.set $y (i32.trunc_f64_s (f64.add (local.get $fy) (f64.const 0.5))))
+    (local.set $x (call $imin (call $imax (local.get $x) (i32.const 0)) (i32.sub (global.get $W) (i32.const 1))))
+    (local.set $y (call $imin (call $imax (local.get $y) (i32.const 0)) (i32.sub (global.get $H) (i32.const 1))))
+    (global.set $oR (call $tex (local.get $x) (local.get $y) (i32.const 0)))
+    (global.set $oG (call $tex (local.get $x) (local.get $y) (i32.const 1)))
+    (global.set $oB (call $tex (local.get $x) (local.get $y) (i32.const 2)))
+    (global.set $oA (call $tex (local.get $x) (local.get $y) (i32.const 3))))
+
+  ;; ---------------- 导出 ----------------
+  (func (export "ec_api_version") (result i32) (i32.const 1))
+  (func (export "ec_manifest_ptr") (result i32) (i32.const 1024))
+  (func (export "ec_manifest_len") (result i32) (i32.const __MANIFEST_LEN__))
+
+  (func (export "ec_alloc") (param $bytes i32) (result i32)
+    (local $need i32) (local $pages i32)
+    (local.set $need (i32.add (i32.const 65536)
+      (i32.add (global.get $ARENA) (i32.mul (local.get $bytes) (i32.const 2)))))
+    (local.set $pages (i32.div_s (i32.add (local.get $need) (i32.const 65535)) (i32.const 65536)))
+    (if (i32.lt_s (i32.mul (i32.const 65536) (local.get $pages)) (local.get $need))
+      (then (local.set $pages (i32.add (local.get $pages) (i32.const 1)))))
+    (if (i32.gt_s (local.get $pages) (memory.size))
+      (then (drop (memory.grow (i32.sub (local.get $pages) (memory.size))))))
+    (global.get $ARENA))
+
+  ;; 给定（可能是小数）输出坐标，算出采样点并读色到 $oR..$oA
+  (func $warpAt (param $fx f64) (param $fy f64)
+    (local $u f64) (local $v f64) (local $t f64) (local $a f64)
+    (local $sx f64) (local $sy f64)
+    (local.set $u (f64.div (f64.sub (local.get $fx) (global.get $CX)) (global.get $CX)))
+    (local.set $v (f64.div (f64.sub (local.get $fy) (global.get $CY)) (global.get $CY)))
+    (local.set $t (f64.mul
+      (f64.max (f64.const 0) (f64.sub (f64.const 1) (f64.mul (local.get $u) (local.get $u))))
+      (f64.max (f64.const 0) (f64.sub (f64.const 1) (f64.mul (local.get $v) (local.get $v))))))
+    ;; A = 1 + k * t^1.5
+    (local.set $a (f64.add (f64.const 1)
+      (f64.mul (global.get $K) (f64.mul (local.get $t) (f64.sqrt (local.get $t))))))
+    ;; 采样点永不越过图层边界：|u|·A ≤ 1 → A ≤ 1/|u|（v 同理）。
+    ;; 没有这一步，靠近边框的像素会采到图外并被夹住，形成一条「拖影亮带」。
+    (if (f64.gt (f64.abs (local.get $u)) (f64.const 0.000001))
+      (then (local.set $a (f64.min (local.get $a) (f64.div (f64.const 1) (f64.abs (local.get $u)))))))
+    (if (f64.gt (f64.abs (local.get $v)) (f64.const 0.000001))
+      (then (local.set $a (f64.min (local.get $a) (f64.div (f64.const 1) (f64.abs (local.get $v)))))))
+    (local.set $sx (f64.add (global.get $CX)
+      (f64.mul (f64.sub (local.get $fx) (global.get $CX)) (local.get $a))))
+    (local.set $sy (f64.add (global.get $CY)
+      (f64.mul (f64.sub (local.get $fy) (global.get $CY)) (local.get $a))))
+    (if (i32.eq (global.get $SAMP) (i32.const 0))
+      (then (call $sampleBilinear (local.get $sx) (local.get $sy)))
+      (else (call $sampleNearest (local.get $sx) (local.get $sy)))))
+
+  ;; 以 (cx,cy) 为中心做 ns×ns 平均采样，结果写回 $oR..$oA
+  (func $avgAt (param $ns i32) (param $cx f64) (param $cy f64)
+    (local $i i32) (local $j i32) (local $step f64) (local $inv f32)
+    (if (i32.le_s (local.get $ns) (i32.const 1))
+      (then (call $warpAt (local.get $cx) (local.get $cy)))
+      (else
+        (global.set $accR (f32.const 0)) (global.set $accG (f32.const 0))
+        (global.set $accB (f32.const 0)) (global.set $accA (f32.const 0))
+        (local.set $step (f64.div (f64.const 1) (f64.convert_i32_s (local.get $ns))))
+        (local.set $j (i32.const 0))
+        (block $jend
+          (loop $jloop
+            (br_if $jend (i32.ge_s (local.get $j) (local.get $ns)))
+            (local.set $i (i32.const 0))
+            (block $iend
+              (loop $iloop
+                (br_if $iend (i32.ge_s (local.get $i) (local.get $ns)))
+                (call $warpAt
+                  (f64.add (local.get $cx)
+                    (f64.sub (f64.mul (local.get $step)
+                      (f64.add (f64.convert_i32_s (local.get $i)) (f64.const 0.5))) (f64.const 0.5)))
+                  (f64.add (local.get $cy)
+                    (f64.sub (f64.mul (local.get $step)
+                      (f64.add (f64.convert_i32_s (local.get $j)) (f64.const 0.5))) (f64.const 0.5))))
+                (global.set $accR (f32.add (global.get $accR) (global.get $oR)))
+                (global.set $accG (f32.add (global.get $accG) (global.get $oG)))
+                (global.set $accB (f32.add (global.get $accB) (global.get $oB)))
+                (global.set $accA (f32.add (global.get $accA) (global.get $oA)))
+                (local.set $i (i32.add (local.get $i) (i32.const 1)))
+                (br $iloop)))
+            (local.set $j (i32.add (local.get $j) (i32.const 1)))
+            (br $jloop)))
+        (local.set $inv (f32.div (f32.const 1)
+          (f32.convert_i32_s (i32.mul (local.get $ns) (local.get $ns)))))
+        (global.set $oR (f32.mul (global.get $accR) (local.get $inv)))
+        (global.set $oG (f32.mul (global.get $accG) (local.get $inv)))
+        (global.set $oB (f32.mul (global.get $accB) (local.get $inv)))
+        (global.set $oA (f32.mul (global.get $accA) (local.get $inv))))))
+
+  (func (export "ec_render")
+    (param $pixels i32) (param $w i32) (param $h i32)
+    (param $params i32) (param $nparams i32)
+    (param $time f64) (param $scale f64) (result i32)
+    (local $x i32) (local $y i32) (local $off i32) (local $px i32)
+    (local $u f64) (local $v f64) (local $t f64) (local $a f64)
+    (local $sx f64) (local $sy f64) (local $bend f64) (local $lim f64) (local $lim2 f64) (local $ns i32) (local $i i32) (local $j i32) (local $step f64) (local $inv f32) (local $f f64) (local $wt f64) (local $lo i32) (local $lR f32) (local $lG f32) (local $lB f32) (local $lA f32) (local $w0 f32) (local $w1 f32)
+
+    (if (i32.lt_s (local.get $w) (i32.const 1)) (then (return (i32.const 1))))
+    (if (i32.lt_s (local.get $h) (i32.const 1)) (then (return (i32.const 1))))
+    (if (i32.lt_s (local.get $nparams) (i32.const 1)) (then (return (i32.const 1))))
+
+    (global.set $W (local.get $w))
+    (global.set $H (local.get $h))
+
+    (local.set $bend (f64.load (local.get $params)))
+    (local.set $bend (f64.max (f64.const -100) (f64.min (f64.const 100) (local.get $bend))))
+    (global.set $K (f64.mul (f64.div (f64.neg (local.get $bend)) (f64.const 100)) (f64.const 0.72)))
+    ;; 硬性安全钳：p=1.5 的折返临界 k≈1.00，这里永不越过 0.80
+    (global.set $K (f64.max (f64.const -0.80) (f64.min (f64.const 0.80) (global.get $K))))
+
+    (if (i32.ge_s (local.get $nparams) (i32.const 2))
+      (then
+        (global.set $SAMP (i32.trunc_f64_s (f64.load (i32.add (local.get $params) (i32.const 8)))))
+        (global.set $SAMP (call $imin (call $imax (global.get $SAMP) (i32.const 0)) (i32.const 1)))))
+
+    (if (f64.lt (f64.abs (global.get $K)) (f64.const 0.000001)) (then (return (i32.const 0))))
+
+    ;; 备份原图：紧跟在像素缓冲之后
+    (global.set $SRC (i32.add (local.get $pixels)
+      (i32.mul (i32.mul (local.get $w) (local.get $h)) (i32.const 16))))
+    (memory.copy (global.get $SRC) (local.get $pixels)
+      (i32.mul (i32.mul (local.get $w) (local.get $h)) (i32.const 16)))
+
+    (global.set $CX (f64.mul (f64.convert_i32_s (i32.sub (local.get $w) (i32.const 1))) (f64.const 0.5)))
+    (global.set $CY (f64.mul (f64.convert_i32_s (i32.sub (local.get $h) (i32.const 1))) (f64.const 0.5)))
+
+    (local.set $y (i32.const 0))
+    (block $yend
+      (loop $yloop
+        (br_if $yend (i32.ge_s (local.get $y) (local.get $h)))
+        (local.set $v (f64.div (f64.sub (f64.convert_i32_s (local.get $y)) (global.get $CY)) (global.get $CY)))
+        (local.set $x (i32.const 0))
+        (block $xend
+          (loop $xloop
+            (br_if $xend (i32.ge_s (local.get $x) (local.get $w)))
+            (local.set $u (f64.div (f64.sub (f64.convert_i32_s (local.get $x)) (global.get $CX)) (global.get $CX)))
+            (local.set $t (f64.mul
+              (f64.sub (f64.const 1) (f64.mul (local.get $u) (local.get $u)))
+              (f64.sub (f64.const 1) (f64.mul (local.get $v) (local.get $v)))))
+            ;; A = 1 + k * t^1.5   （t^1.5 = t*sqrt(t)：起点不缓入、边上收敛更快）
+            (local.set $a (f64.add (f64.const 1)
+              (f64.mul (global.get $K)
+                (f64.mul (local.get $t) (f64.sqrt (local.get $t))))))
+
+            ;; 自适应超采样：缩得越狠、预览分辨率越低，样本越多（压掉亚像素走样）
+            ;; 连续 LOD：ns 由缩小倍率决定（0..2），在 lo / hi 两档之间按权重混合，
+            ;; 避免「换档」本身造成的画面跳动（低分辨率预览下尤其明显）
+            (local.set $f (f64.mul (f64.sub (local.get $a) (f64.const 1.0)) (f64.const 2.0)))
+            ;; 不再看宿主传的 scale：超采样只看局部缩小倍率 A，
+            ;; 这样宿主换预览缓冲尺寸时画面不会因为「档位变化」而跳。
+            (local.set $f (f64.max (f64.const 0) (f64.min (f64.const 1.0) (local.get $f))))
+            (local.set $wt (f64.sub (local.get $f) (f64.convert_i32_s (i32.trunc_f64_s (local.get $f)))))
+            (local.set $lo (i32.trunc_f64_s (local.get $f)))
+            (call $avgAt (local.get $lo)
+              (f64.convert_i32_s (local.get $x)) (f64.convert_i32_s (local.get $y)))
+            (local.set $lR (global.get $oR)) (local.set $lG (global.get $oG))
+            (local.set $lB (global.get $oB)) (local.set $lA (global.get $oA))
+            (if (f64.gt (local.get $wt) (f64.const 0.002))
+              (then
+                (call $avgAt (i32.add (local.get $lo) (i32.const 1))
+                  (f64.convert_i32_s (local.get $x)) (f64.convert_i32_s (local.get $y)))
+                (local.set $w1 (f32.demote_f64 (local.get $wt)))
+                (local.set $w0 (f32.sub (f32.const 1) (local.get $w1)))
+                (global.set $oR (f32.add (f32.mul (local.get $lR) (local.get $w0)) (f32.mul (global.get $oR) (local.get $w1))))
+                (global.set $oG (f32.add (f32.mul (local.get $lG) (local.get $w0)) (f32.mul (global.get $oG) (local.get $w1))))
+                (global.set $oB (f32.add (f32.mul (local.get $lB) (local.get $w0)) (f32.mul (global.get $oB) (local.get $w1))))
+                (global.set $oA (f32.add (f32.mul (local.get $lA) (local.get $w0)) (f32.mul (global.get $oA) (local.get $w1)))))
+              (else
+                (global.set $oR (local.get $lR)) (global.set $oG (local.get $lG))
+                (global.set $oB (local.get $lB)) (global.set $oA (local.get $lA))))
+            (local.set $off (i32.add (local.get $pixels)
+              (i32.mul (i32.add (i32.mul (local.get $y) (local.get $w)) (local.get $x)) (i32.const 16))))
+            (f32.store (local.get $off) (global.get $oR))
+            (f32.store (i32.add (local.get $off) (i32.const 4)) (global.get $oG))
+            (f32.store (i32.add (local.get $off) (i32.const 8)) (global.get $oB))
+            (f32.store (i32.add (local.get $off) (i32.const 12)) (global.get $oA))
+
+            (local.set $x (i32.add (local.get $x) (i32.const 1)))
+            (br $xloop)))
+        (local.set $y (i32.add (local.get $y) (i32.const 1)))
+        (br $yloop)))
+
+    (i32.const 0))
+)

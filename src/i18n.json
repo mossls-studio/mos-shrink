@@ -1,0 +1,40 @@
+{
+  "$comment": "Localization overlay for src/manifest.json. build.js applies the selected language over the source manifest; anything not listed here falls back to the source value.",
+  "category": { "zh": "MOS 形变", "en": "MOS Deform" },
+  "name": { "zh": "mos_收缩", "en": "mos_shrink" },
+  "description": {
+    "zh": "锚点收缩形变：画面向可移动锚点收缩，边缘固定不撕裂（全部固定 / 不固定=AE 鱼眼），收缩强度随半径沿可编辑的贝塞尔曲线插值。",
+    "en": "Anchor-point shrink: the image contracts toward a movable anchor while the edges stay pinned and tear-free (all pinned, or unpinned = AE fisheye). Strength interpolates by radius along an editable Bezier curve."
+  },
+  "params": {
+    "amount": { "name": { "zh": "收缩量 %", "en": "Shrink Amount %" } },
+    "anchor": { "name": { "zh": "锚点", "en": "Anchor" } },
+    "radius": { "name": { "zh": "半径 %", "en": "Radius %" } },
+    "curve_x1": { "name": { "zh": "曲线 X1", "en": "Curve X1" } },
+    "curve_y1": { "name": { "zh": "曲线 Y1", "en": "Curve Y1" } },
+    "curve_x2": { "name": { "zh": "曲线 X2", "en": "Curve X2" } },
+    "curve_y2": { "name": { "zh": "曲线 Y2", "en": "Curve Y2" } },
+    "edge_fix": {
+      "name": { "zh": "边缘固定", "en": "Edge Pin" },
+      "options": {
+        "zh": ["固定（四边+四角）", "圆形·AE 白点（钉四角，边可弯）"],
+        "en": ["Pinned (4 edges + 4 corners)", "Circular · AE white dots (corners pinned, edges bend)"]
+      }
+    },
+    "sampling": {
+      "name": { "zh": "采样", "en": "Sampling" },
+      "options": {
+        "zh": ["双线性", "双三次", "最近邻"],
+        "en": ["Bilinear", "Bicubic", "Nearest"]
+      }
+    },
+    "edge_mode": {
+      "name": { "zh": "越界", "en": "Edge Mode" },
+      "options": {
+        "zh": ["拉伸边缘", "重复", "镜像", "透明"],
+        "en": ["Stretch", "Repeat", "Mirror", "Transparent"]
+      }
+    },
+    "mix": { "name": { "zh": "混合 %", "en": "Mix %" } }
+  }
+}

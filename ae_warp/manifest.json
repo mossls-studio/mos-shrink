@@ -1,0 +1,15 @@
+{
+  "api": 1,
+  "id": "mos.ae.warp",
+  "name": "mos_收缩",
+  "category": "MOS",
+  "version": "1.3.0",
+  "author": "MOSSLS",
+  "description": "AE 扭曲 ▸ 变形 ▸ 白点（鱼眼）的复刻：锚点可移动、边界固定，中心随「弯曲」向内外鼓缩。",
+  "params": [
+    {"id": "anchor", "name": "锚点", "type": "point", "default": [0.5, 0.5]},
+    {"id": "bend", "name": "弯曲", "type": "slider", "default": 0, "min": -100, "max": 100, "decimals": 1},
+    {"id": "sampling", "name": "采样", "type": "popup", "options": ["双线性", "最近邻"], "default": 0},
+    {"id": "quality", "name": "画质", "type": "popup", "options": ["快速（不抗锯齿）", "标准", "高"], "default": 1}
+  ]
+}

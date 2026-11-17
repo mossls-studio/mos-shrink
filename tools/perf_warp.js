@@ -1,0 +1,15 @@
+const fs=require("fs");const W=1920,H=1080;
+const mod=new WebAssembly.Module(fs.readFileSync("dist/变形-白点/ae_warp.wasm"));
+const ex=new WebAssembly.Instance(mod,{}).exports;
+const bytes=16+W*H*16+65536;const p=ex.ec_alloc(bytes);
+const dv=new DataView(ex.memory.buffer);dv.setFloat64(p,-100,true);dv.setFloat64(p+8,0,true);
+const pix=p+16;const f=new Float32Array(ex.memory.buffer,pix,W*H*4);f.fill(0.5);
+for(let i=0;i<3;i++)ex.ec_render(pix,W,H,p,2,0,1);
+const t0=Date.now();for(let i=0;i<5;i++)ex.ec_render(pix,W,H,p,2,0,1);
+console.log("1080p full-res:",((Date.now()-t0)/5).toFixed(1),"ms/frame");
+const s=0.3333,W2=Math.round(W*s),H2=Math.round(H*s);
+const p2=ex.ec_alloc(16+W2*H2*16+65536);const dv2=new DataView(ex.memory.buffer);dv2.setFloat64(p2,-100,true);dv2.setFloat64(p2+8,0,true);
+const pix2=p2+16;new Float32Array(ex.memory.buffer,pix2,W2*H2*4).fill(0.5);
+for(let i=0;i<3;i++)ex.ec_render(pix2,W2,H2,p2,2,0,s);
+const t1=Date.now();for(let i=0;i<10;i++)ex.ec_render(pix2,W2,H2,p2,2,0,s);
+console.log("1/3 preview:",((Date.now()-t1)/10).toFixed(1),"ms/frame");

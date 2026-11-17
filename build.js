@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 MOSSLS
+
 // build.js — 编译 src/mos_shrink.wat（内嵌 manifest）→ dist/zh + dist/en
 //   node build.js              构建 zh 与 en 两套
 //   node build.js --lang=en    只构建 en
